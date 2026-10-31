@@ -83,12 +83,6 @@ async function sendLongReply(interaction, header, text) {
 
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Bot đã kết nối thành công: ${readyClient.user.tag}`);
-  try {
-    const scClientId = await play.getFreeClientID();
-    if (scClientId) {
-      await play.setToken({ soundcloud: { client_id: scClientId } });
-    }
-  } catch {}
   if (process.env.CLIENT_ID && process.env.DISCORD_TOKEN) {
     await deployCommands(process.env.CLIENT_ID.trim(), process.env.DISCORD_TOKEN.trim());
   }
@@ -111,10 +105,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       const result = await model.generateContent(question);
       const answer = result.response.text();
-      await sendLongReply(interaction, `🤖 **Google Gemini** - Câu hỏi: *${question}*`, answer);
+      await sendLongReply(interaction, `🤖 **Google Gemini (2.0 Flash)** - Câu hỏi: *${question}*`, answer);
       return;
     }
 
@@ -127,10 +121,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const groq = new Groq({ apiKey });
       const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: question }],
-        model: 'llama-3.1-8b-instant',
+        model: 'openai/gpt-oss-20b',
       });
       const answer = completion.choices[0]?.message?.content || 'Không có câu trả lời.';
-      await sendLongReply(interaction, `⚡ **Groq (Llama 3.1 8B)** - Câu hỏi: *${question}*`, answer);
+      await sendLongReply(interaction, `⚡ **Groq (GPT-OSS 20B)** - Câu hỏi: *${question}*`, answer);
       return;
     }
 
@@ -170,7 +164,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         } else {
           const results = await play.search(question, { source: { soundcloud: 'tracks' }, limit: 1 });
-          if (!results || results.length === 0) {
+          if (!results || results.length === 0 || !results[0].url) {
             await interaction.editReply(`❌ Không tìm thấy bài hát nào trên SoundCloud cho: *${question}*`);
             return;
           }
@@ -188,7 +182,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           songUrl = question;
         } else {
           const spSearch = await play.search(question, { source: { spotify: 'track' }, limit: 1 });
-          if (!spSearch || spSearch.length === 0) {
+          if (!spSearch || spSearch.length === 0 || !spSearch[0].url) {
             await interaction.editReply(`❌ Không tìm thấy bài hát nào trên Spotify cho: *${question}*`);
             return;
           }
@@ -207,7 +201,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         } else {
           const results = await play.search(question, { source: { youtube: 'video' }, limit: 1 });
-          if (!results || results.length === 0) {
+          if (!results || results.length === 0 || !results[0].url) {
             await interaction.editReply(`❌ Không tìm thấy bài hát nào trên YouTube cho: *${question}*`);
             return;
           }
@@ -224,6 +218,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      if (!songUrl) {
+        await interaction.editReply(`❌ Không tìm thấy URL hợp lệ cho bài hát: *${question}*`);
+        return;
+      }
+
       const player = getOrCreatePlayer(interaction.guildId);
       const connection = joinVoiceChannel({
         channelId: memberVoiceChannel.id,
@@ -233,16 +232,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       connection.subscribe(player);
 
-      const stream = await play.stream(songUrl);
-      const resource = createAudioResource(stream.stream, {
-        inputType: stream.type,
-      });
+      try {
+        const stream = await play.stream(songUrl);
+        const resource = createAudioResource(stream.stream, {
+          inputType: stream.type,
+        });
 
-      player.play(resource);
+        player.play(resource);
 
-      await interaction.editReply(
-        `▶️ **Đang phát:** [${songTitle}](${songUrl})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`
-      );
+        await interaction.editReply(
+          `▶️ **Đang phát:** [${songTitle}](${songUrl})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`
+        );
+      } catch (streamErr) {
+        console.error('Lỗi khi phát stream audio:', streamErr);
+        await interaction.editReply(
+          `⚠️ Không thể phát nguồn âm thanh này: ${streamErr.message}\n💡 *Có thể do nền tảng (${source.toUpperCase()}) hạn chế bản quyền hoặc yêu cầu xác thực.*`
+        );
+      }
       return;
     }
   } catch (err) {
