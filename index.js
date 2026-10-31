@@ -27,7 +27,6 @@ import {
 import play from 'play-dl';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
-import { search as ddgSearch, SafeSearchType } from 'duck-duck-scrape';
 import { deployCommands } from './deploy-commands.js';
 
 const client = new Client({
@@ -82,16 +81,16 @@ async function sendLongReply(interaction, header, text) {
   }
 }
 
-play.getFreeClientID().then((id) => {
-  if (id) {
-    play.setToken({ soundcloud: { client_id: id } });
-  }
-}).catch(() => {});
-
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Bot đã kết nối thành công: ${readyClient.user.tag}`);
+  try {
+    const scClientId = await play.getFreeClientID();
+    if (scClientId) {
+      await play.setToken({ soundcloud: { client_id: scClientId } });
+    }
+  } catch {}
   if (process.env.CLIENT_ID && process.env.DISCORD_TOKEN) {
-    await deployCommands(process.env.CLIENT_ID, process.env.DISCORD_TOKEN);
+    await deployCommands(process.env.CLIENT_ID.trim(), process.env.DISCORD_TOKEN.trim());
   }
 });
 
@@ -106,11 +105,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     if (source === 'gemini') {
-      if (!process.env.GEMINI_API_KEY) {
+      const apiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : '';
+      if (!apiKey) {
         await interaction.editReply('❌ Chưa cấu hình `GEMINI_API_KEY`. Vui lòng thêm biến môi trường.');
         return;
       }
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(question);
       const answer = result.response.text();
@@ -119,11 +119,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (source === 'groq') {
-      if (!process.env.GROQ_API_KEY) {
+      const apiKey = process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.trim() : '';
+      if (!apiKey) {
         await interaction.editReply('❌ Chưa cấu hình `GROQ_API_KEY`. Vui lòng thêm biến môi trường.');
         return;
       }
-      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+      const groq = new Groq({ apiKey });
       const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: question }],
         model: 'llama-3.1-8b-instant',
@@ -134,15 +135,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (source === 'web') {
-      const searchRes = await ddgSearch(question, { safeSearch: SafeSearchType.MODERATE });
-      if (!searchRes || !searchRes.results || searchRes.results.length === 0) {
+      const wikiUrl = `https://vi.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(question)}&format=json&origin=*`;
+      const res = await fetch(wikiUrl);
+      const data = await res.json();
+      const searchResults = data?.query?.search || [];
+      if (searchResults.length === 0) {
         await interaction.editReply(`❌ Không tìm thấy kết quả nào cho: *${question}*`);
         return;
       }
-      const top3 = searchRes.results.slice(0, 3);
-      let reply = `🔍 **Kết quả tìm kiếm Web cho:** *${question}*\n\n`;
+      const top3 = searchResults.slice(0, 3);
+      let reply = `🔍 **Kết quả tra cứu cho:** *${question}*\n\n`;
       top3.forEach((item, index) => {
-        reply += `**${index + 1}. [${item.title}](${item.url})**\n${item.snippet || 'Không có mô tả.'}\n\n`;
+        const cleanSnippet = (item.snippet || '').replace(/<[^>]*>/g, '').trim();
+        const articleUrl = `https://vi.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}`;
+        reply += `**${index + 1}. [${item.title}](${articleUrl})**\n${cleanSnippet || 'Không có mô tả.'}\n\n`;
       });
       await interaction.editReply(reply.trim());
       return;
@@ -156,16 +162,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const isUrl = play.so_validate(question);
         if (isUrl) {
           songUrl = question;
-          const info = await play.soundcloud(question);
-          songTitle = info.name || 'SoundCloud Track';
+          try {
+            const info = await play.soundcloud(question);
+            songTitle = info.name || 'SoundCloud Track';
+          } catch {
+            songTitle = 'SoundCloud Track';
+          }
         } else {
-          const scSearch = await play.search(question, { source: { soundcloud: 'tracks' }, limit: 1 });
-          if (!scSearch || scSearch.length === 0) {
+          const results = await play.search(question, { source: { soundcloud: 'tracks' }, limit: 1 });
+          if (!results || results.length === 0) {
             await interaction.editReply(`❌ Không tìm thấy bài hát nào trên SoundCloud cho: *${question}*`);
             return;
           }
-          songTitle = scSearch[0].name || scSearch[0].title || 'SoundCloud Track';
-          songUrl = scSearch[0].url;
+          songTitle = results[0].name || 'SoundCloud Track';
+          songUrl = results[0].url;
         }
       } else if (source === 'spotify') {
         const isSpUrl = play.sp_validate(question);
@@ -189,16 +199,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const isYtUrl = play.yt_validate(question);
         if (isYtUrl) {
           songUrl = question;
-          const info = await play.video_basic_info(question);
-          songTitle = info.video_details.title || 'YouTube Track';
+          try {
+            const info = await play.video_basic_info(question);
+            songTitle = info.video_details.title || 'YouTube Track';
+          } catch {
+            songTitle = 'YouTube Track';
+          }
         } else {
-          const ytSearch = await play.search(question, { limit: 1 });
-          if (!ytSearch || ytSearch.length === 0) {
+          const results = await play.search(question, { source: { youtube: 'video' }, limit: 1 });
+          if (!results || results.length === 0) {
             await interaction.editReply(`❌ Không tìm thấy bài hát nào trên YouTube cho: *${question}*`);
             return;
           }
-          songTitle = ytSearch[0].title || 'YouTube Track';
-          songUrl = ytSearch[0].url;
+          songTitle = results[0].title || 'YouTube Track';
+          songUrl = results[0].url;
         }
       }
 
@@ -242,4 +256,4 @@ if (!process.env.DISCORD_TOKEN) {
   process.exit(1);
 }
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN.trim());
