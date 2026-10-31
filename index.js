@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 
 if (!process.env._V8_MEM_LIMITED && v8.getHeapStatistics().heap_size_limit > 500 * 1024 * 1024) {
   process.env._V8_MEM_LIMITED = '1';
-  const child = spawn(process.execPath, ['--max-old-space-size=75', ...process.argv.slice(1)], {
+  const child = spawn(process.execPath, ['--max-old-space-size=75', '--max-http-header-size=131072', ...process.argv.slice(1)], {
     stdio: 'inherit',
     env: process.env,
   });
@@ -21,13 +21,17 @@ import {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
+  demuxProbe,
   AudioPlayerStatus,
   VoiceConnectionStatus,
 } from '@discordjs/voice';
 import play from 'play-dl';
+import { Ytdl } from '@distube/ytdl-core';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { deployCommands } from './deploy-commands.js';
+
+const ytdl = new Ytdl();
 
 const client = new Client({
   intents: [
@@ -105,10 +109,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
       const result = await model.generateContent(question);
       const answer = result.response.text();
-      await sendLongReply(interaction, `🤖 **Google Gemini (2.0 Flash)** - Câu hỏi: *${question}*`, answer);
+      await sendLongReply(interaction, `🤖 **Google Gemini (3.8 Flash)** - Câu hỏi: *${question}*`, answer);
       return;
     }
 
@@ -149,56 +153,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (source === 'youtube' || source === 'spotify' || source === 'soundcloud') {
+      const memberVoiceChannel = interaction.member?.voice?.channel;
+      if (!memberVoiceChannel) {
+        await interaction.editReply(
+          `🎵 **Yêu cầu phát nhạc (${source.toUpperCase()}):** *${question}*\n💡 *Hãy tham gia vào một kênh thoại (Voice Channel) và thử lại để bot phát nhạc trực tiếp.*`
+        );
+        return;
+      }
+
       let songTitle = '';
       let songUrl = '';
 
-      if (source === 'soundcloud') {
-        const isUrl = play.so_validate(question);
-        if (isUrl) {
-          songUrl = question;
-          try {
-            const info = await play.soundcloud(question);
-            songTitle = info.name || 'SoundCloud Track';
-          } catch {
-            songTitle = 'SoundCloud Track';
-          }
-        } else {
-          const results = await play.search(question, { source: { soundcloud: 'tracks' }, limit: 1 });
-          if (!results || results.length === 0 || !results[0].url) {
-            await interaction.editReply(`❌ Không tìm thấy bài hát nào trên SoundCloud cho: *${question}*`);
-            return;
-          }
-          songTitle = results[0].name || 'SoundCloud Track';
-          songUrl = results[0].url;
-        }
-      } else if (source === 'spotify') {
-        const isSpUrl = play.sp_validate(question);
-        if (isSpUrl) {
-          if (play.is_expired()) {
-            await play.refreshToken();
-          }
-          const spData = await play.spotify(question);
-          songTitle = `${spData.name} - ${spData.artists?.map((a) => a.name).join(', ') || ''}`;
-          songUrl = question;
-        } else {
-          const spSearch = await play.search(question, { source: { spotify: 'track' }, limit: 1 });
-          if (!spSearch || spSearch.length === 0 || !spSearch[0].url) {
-            await interaction.editReply(`❌ Không tìm thấy bài hát nào trên Spotify cho: *${question}*`);
-            return;
-          }
-          songTitle = `${spSearch[0].name} - ${spSearch[0].artists?.map((a) => a.name).join(', ') || ''}`;
-          songUrl = spSearch[0].url;
-        }
-      } else {
-        const isYtUrl = play.yt_validate(question);
+      if (source === 'youtube') {
+        const isYtUrl = play.yt_validate(question) === 'video';
         if (isYtUrl) {
           songUrl = question;
+          songTitle = 'YouTube Track';
           try {
             const info = await play.video_basic_info(question);
-            songTitle = info.video_details.title || 'YouTube Track';
-          } catch {
-            songTitle = 'YouTube Track';
-          }
+            songTitle = info.video_details.title || songTitle;
+          } catch {}
         } else {
           const results = await play.search(question, { source: { youtube: 'video' }, limit: 1 });
           if (!results || results.length === 0 || !results[0].url) {
@@ -208,14 +182,40 @@ client.on(Events.InteractionCreate, async (interaction) => {
           songTitle = results[0].title || 'YouTube Track';
           songUrl = results[0].url;
         }
-      }
-
-      const memberVoiceChannel = interaction.member?.voice?.channel;
-      if (!memberVoiceChannel) {
-        await interaction.editReply(
-          `🎵 **Đã tìm thấy bài hát (${source.toUpperCase()}):**\n📌 **${songTitle}**\n🔗 ${songUrl}\n💡 *Hãy tham gia vào một kênh thoại (Voice Channel) và thử lại để bot phát nhạc trực tiếp.*`
-        );
-        return;
+      } else if (source === 'spotify') {
+        let query = question;
+        if (question.includes('open.spotify.com')) {
+          try {
+            const res = await fetch(question);
+            const html = await res.text();
+            const match = html.match(/property="og:title" content="([^"]+)"/);
+            if (match && match[1]) query = match[1];
+          } catch {}
+        }
+        const results = await play.search(query, { source: { youtube: 'video' }, limit: 1 });
+        if (!results || results.length === 0 || !results[0].url) {
+          await interaction.editReply(`❌ Không tìm thấy bài hát nào trên Spotify/YouTube cho: *${question}*`);
+          return;
+        }
+        songTitle = results[0].title || query;
+        songUrl = results[0].url;
+      } else if (source === 'soundcloud') {
+        if (question.startsWith('https://') && question.includes('soundcloud.com')) {
+          songUrl = question;
+          songTitle = 'SoundCloud Track';
+          try {
+            const info = await play.soundcloud(question);
+            songTitle = info.name || songTitle;
+          } catch {}
+        } else {
+          const results = await play.search(question, { source: { youtube: 'video' }, limit: 1 });
+          if (!results || results.length === 0 || !results[0].url) {
+            await interaction.editReply(`❌ Không tìm thấy bài hát nào trên SoundCloud/YouTube cho: *${question}*`);
+            return;
+          }
+          songTitle = results[0].title || question;
+          songUrl = results[0].url;
+        }
       }
 
       if (!songUrl) {
@@ -233,10 +233,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
       connection.subscribe(player);
 
       try {
-        const stream = await play.stream(songUrl);
-        const resource = createAudioResource(stream.stream, {
-          inputType: stream.type,
-        });
+        let resource;
+        if (songUrl.includes('soundcloud.com')) {
+          try {
+            const scStream = await play.stream(songUrl);
+            resource = createAudioResource(scStream.stream, { inputType: scStream.type });
+          } catch {
+            const ytResults = await play.search(songTitle, { source: { youtube: 'video' }, limit: 1 });
+            if (ytResults && ytResults[0]?.url) {
+              const stream = ytdl.download(ytResults[0].url, {
+                filter: { hasAudio: true, hasVideo: false },
+                quality: 'highestaudio',
+              });
+              const probe = await demuxProbe(stream);
+              resource = createAudioResource(probe.stream, { inputType: probe.type });
+            } else {
+              throw new Error('SoundCloud stream failed and no YouTube fallback found');
+            }
+          }
+        } else {
+          const stream = ytdl.download(songUrl, {
+            filter: { hasAudio: true, hasVideo: false },
+            quality: 'highestaudio',
+          });
+          const probe = await demuxProbe(stream);
+          resource = createAudioResource(probe.stream, { inputType: probe.type });
+        }
 
         player.play(resource);
 
