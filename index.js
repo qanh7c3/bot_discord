@@ -1,3 +1,16 @@
+import v8 from 'v8';
+import { spawn } from 'child_process';
+
+if (!process.env._V8_MEM_LIMITED && v8.getHeapStatistics().heap_size_limit > 500 * 1024 * 1024) {
+  process.env._V8_MEM_LIMITED = '1';
+  const child = spawn(process.execPath, ['--max-old-space-size=75', ...process.argv.slice(1)], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  child.on('exit', (code) => process.exit(code ?? 0));
+  await new Promise(() => {});
+}
+
 import 'dotenv/config';
 import { setGlobalDispatcher, Agent } from 'undici';
 try {

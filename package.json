@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
+    "start": "node --max-old-space-size=75 index.js",
     "deploy": "node deploy-commands.js"
   },
   "dependencies": {
