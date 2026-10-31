@@ -109,10 +109,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
-      const result = await model.generateContent(question);
-      const answer = result.response.text();
-      await sendLongReply(interaction, `🤖 **Google Gemini (3.8 Flash)** - Câu hỏi: *${question}*`, answer);
+      const candidateModels = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+      let answer = '';
+      let usedModel = 'gemini-3.8-flash';
+      for (const m of candidateModels) {
+        try {
+          const model = genAI.getGenerativeModel({ model: m });
+          const result = await model.generateContent(question);
+          answer = result.response.text();
+          usedModel = m;
+          break;
+        } catch (e) {
+          if (m === candidateModels[candidateModels.length - 1]) throw e;
+        }
+      }
+      await sendLongReply(interaction, `🤖 **Google Gemini (${usedModel})** - Câu hỏi: *${question}*`, answer);
       return;
     }
 
@@ -283,5 +294,15 @@ if (!process.env.DISCORD_TOKEN) {
   console.error('Thiếu biến môi trường DISCORD_TOKEN trong file .env');
   process.exit(1);
 }
+
+process.on('SIGTERM', () => {
+  client.destroy();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  client.destroy();
+  process.exit(0);
+});
 
 client.login(process.env.DISCORD_TOKEN.trim());
