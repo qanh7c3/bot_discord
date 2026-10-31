@@ -5,11 +5,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node --optimize-for-size --max-old-space-size=50 --expose-gc index.js",
+    "start": "node --optimize-for-size --max-old-space-size=45 --expose-gc index.js",
     "deploy": "node deploy-commands.js"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
     "@distube/ytdl-core": "^5.2.0",
     "@google/generative-ai": "^0.24.1",

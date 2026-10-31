@@ -16,7 +16,6 @@ import play from 'play-dl';
 import { Ytdl } from '@distube/ytdl-core';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
-import { deployCommands } from './deploy-commands.js';
 
 if (global.gc) {
   setInterval(() => {
@@ -88,11 +87,8 @@ async function sendLongReply(interaction, header, text) {
   }
 }
 
-client.once(Events.ClientReady, async (readyClient) => {
+client.once(Events.ClientReady, (readyClient) => {
   console.log(`Bot đã kết nối thành công: ${readyClient.user.tag}`);
-  if (process.env.CLIENT_ID && process.env.DISCORD_TOKEN) {
-    await deployCommands(process.env.CLIENT_ID.trim(), process.env.DISCORD_TOKEN.trim());
-  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -256,8 +252,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const ytResults = await play.search(songTitle, { source: { youtube: 'video' }, limit: 1 });
             if (ytResults && ytResults[0]?.url) {
               const stream = ytdl.download(ytResults[0].url, {
-                filter: { hasAudio: true, hasVideo: false },
-                quality: 'highestaudio',
+                filter: (f) => f.container === 'webm' && f.hasAudio && !f.hasVideo,
+                highWaterMark: 1 << 20,
               });
               const probe = await demuxProbe(stream);
               resource = createAudioResource(probe.stream, { inputType: probe.type });
@@ -267,8 +263,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         } else {
           const stream = ytdl.download(songUrl, {
-            filter: { hasAudio: true, hasVideo: false },
-            quality: 'highestaudio',
+            filter: (f) => f.container === 'webm' && f.hasAudio && !f.hasVideo,
+            highWaterMark: 1 << 20,
           });
           const probe = await demuxProbe(stream);
           resource = createAudioResource(probe.stream, { inputType: probe.type });
