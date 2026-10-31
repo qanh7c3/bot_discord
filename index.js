@@ -1,22 +1,9 @@
-import v8 from 'v8';
-import { spawn } from 'child_process';
-
-if (!process.env._V8_MEM_LIMITED && v8.getHeapStatistics().heap_size_limit > 500 * 1024 * 1024) {
-  process.env._V8_MEM_LIMITED = '1';
-  const child = spawn(process.execPath, ['--max-old-space-size=75', '--max-http-header-size=131072', ...process.argv.slice(1)], {
-    stdio: 'inherit',
-    env: process.env,
-  });
-  child.on('exit', (code) => process.exit(code ?? 0));
-  await new Promise(() => {});
-}
-
 import 'dotenv/config';
 import { setGlobalDispatcher, Agent } from 'undici';
 try {
   setGlobalDispatcher(new Agent({ maxHeaderSize: 131072 }));
 } catch {}
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, Options } from 'discord.js';
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -31,14 +18,30 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 import { deployCommands } from './deploy-commands.js';
 
+if (global.gc) {
+  setInterval(() => {
+    try { global.gc(); } catch {}
+  }, 30000).unref();
+}
+
 const ytdl = new Ytdl();
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMessages,
   ],
+  makeCache: Options.cacheWithLimits({
+    MessageManager: 0,
+    PresenceManager: 0,
+    UserManager: 0,
+    GuildMemberManager: 0,
+    ReactionManager: 0,
+    ThreadManager: 0,
+    StageInstanceManager: 0,
+    GuildScheduledEventManager: 0,
+    AutoModerationRuleManager: 0,
+  }),
 });
 
 const guildPlayers = new Map();
@@ -287,6 +290,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (err) {
     console.error('Lỗi khi xử lý lệnh /ask:', err);
     await interaction.editReply(`⚠️ Đã xảy ra lỗi khi thực thi lệnh: ${err.message}`);
+  } finally {
+    if (global.gc) {
+      try { global.gc(); } catch {}
+    }
   }
 });
 
