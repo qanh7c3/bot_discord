@@ -111,10 +111,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
       const result = await model.generateContent(question);
       const answer = result.response.text();
-      await sendLongReply(interaction, `🤖 **Google Gemini (1.5 Flash)** - Câu hỏi: *${question}*`, answer);
+      await sendLongReply(interaction, `🤖 **Google Gemini** - Câu hỏi: *${question}*`, answer);
       return;
     }
 
@@ -126,10 +126,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
       const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: question }],
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
       });
       const answer = completion.choices[0]?.message?.content || 'Không có câu trả lời.';
-      await sendLongReply(interaction, `⚡ **Groq (Llama 3.3 70B)** - Câu hỏi: *${question}*`, answer);
+      await sendLongReply(interaction, `⚡ **Groq (Llama 3.1 8B)** - Câu hỏi: *${question}*`, answer);
       return;
     }
 

@@ -11,7 +11,7 @@ export const commands = [
         .setRequired(true)
         .addChoices(
           { name: 'Google Gemini', value: 'gemini' },
-          { name: 'Groq (Llama 3.3)', value: 'groq' },
+          { name: 'Groq (Llama 3.1)', value: 'groq' },
           { name: 'Tra cứu Web (DuckDuckGo)', value: 'web' },
           { name: 'YouTube Music', value: 'youtube' },
           { name: 'Spotify Music', value: 'spotify' },
