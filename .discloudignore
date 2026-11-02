@@ -1,7 +1,0 @@
-node_modules
-.env
-npm-debug.log
-.git
-.gitignore
-file_gui_di
-bot_discord.zip

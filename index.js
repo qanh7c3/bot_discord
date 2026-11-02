@@ -1,3 +1,4 @@
+import http from 'http';
 import 'dotenv/config';
 import { setGlobalDispatcher, Agent } from 'undici';
 try {
@@ -16,6 +17,21 @@ import play from 'play-dl';
 import { Ytdl } from '@distube/ytdl-core';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
+
+const PORT = process.env.PORT || 3000;
+const server = http.createServer((req, res) => {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running');
+  } else {
+    res.writeHead(405);
+    res.end();
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 
 if (global.gc) {
   setInterval(() => {
@@ -299,11 +315,13 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 process.on('SIGTERM', () => {
+  server.close();
   client.destroy();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
+  server.close();
   client.destroy();
   process.exit(0);
 });
