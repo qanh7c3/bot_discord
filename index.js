@@ -30,8 +30,8 @@ const server = http.createServer((req, res) => {
     const tokenInfo = process.env.DISCORD_TOKEN ? `${process.env.DISCORD_TOKEN.slice(0, 6)}...${process.env.DISCORD_TOKEN.slice(-4)} (len:${process.env.DISCORD_TOKEN.length})` : 'MISSING';
     const shardStatus = client.ws.shards.first()?.status ?? 'no-shard';
     const botStatus = client.isReady()
-      ? `Bot is running! Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size}`
-      : `Bot is running! Discord: OFFLINE (ws: ${client.ws.status}, shard: ${shardStatus}, loginResolved: ${loginResolved}, error: ${loginError || 'none'}, token: ${tokenInfo}, debug: ${lastDebug})`;
+      ? `Bot is running! [v2 - uptime: ${Math.floor(process.uptime())}s] Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size}`
+      : `Bot is running! [v2 - uptime: ${Math.floor(process.uptime())}s] Discord: OFFLINE (ws: ${client.ws.status}, shard: ${shardStatus}, loginResolved: ${loginResolved}, error: ${loginError || 'none'}, token: ${tokenInfo}, debug: ${lastDebug})`;
     res.end(botStatus);
   } else {
     res.writeHead(405);
