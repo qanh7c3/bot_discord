@@ -19,14 +19,17 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 
 let loginError = null;
+let lastDebug = 'none';
+let loginResolved = false;
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     const tokenInfo = process.env.DISCORD_TOKEN ? `${process.env.DISCORD_TOKEN.slice(0, 6)}...${process.env.DISCORD_TOKEN.slice(-4)} (len:${process.env.DISCORD_TOKEN.length})` : 'MISSING';
+    const shardStatus = client.ws.shards.first()?.status ?? 'no-shard';
     const botStatus = client.isReady()
       ? `Bot is running! Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size}`
-      : `Bot is running! Discord: OFFLINE (ws: ${client.ws.status}, error: ${loginError || 'none'}, token: ${tokenInfo})`;
+      : `Bot is running! Discord: OFFLINE (ws: ${client.ws.status}, shard: ${shardStatus}, loginResolved: ${loginResolved}, error: ${loginError || 'none'}, token: ${tokenInfo}, debug: ${lastDebug})`;
     res.end(botStatus);
   } else {
     res.writeHead(405);
@@ -335,7 +338,20 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-client.login(process.env.DISCORD_TOKEN.trim()).catch((err) => {
-  loginError = err.message;
-  console.error('Lỗi kết nối Discord:', err.message);
+client.on('debug', (msg) => {
+  lastDebug = msg;
 });
+
+client.on('error', (err) => {
+  loginError = err.message;
+  console.error('Client error:', err.message);
+});
+
+client.login(process.env.DISCORD_TOKEN.trim())
+  .then(() => {
+    loginResolved = true;
+  })
+  .catch((err) => {
+    loginError = err.message;
+    console.error('Lỗi kết nối Discord:', err.message);
+  });
