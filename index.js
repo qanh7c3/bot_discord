@@ -18,13 +18,15 @@ import { Ytdl } from '@distube/ytdl-core';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 
+let loginError = null;
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    const tokenInfo = process.env.DISCORD_TOKEN ? `${process.env.DISCORD_TOKEN.slice(0, 6)}...${process.env.DISCORD_TOKEN.slice(-4)} (len:${process.env.DISCORD_TOKEN.length})` : 'MISSING';
     const botStatus = client.isReady()
-      ? `Bot is running! Discord: ONLINE (${client.user?.tag || ''})`
-      : `Bot is running! Discord: CONNECTING (${client.ws.status})`;
+      ? `Bot is running! Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size}`
+      : `Bot is running! Discord: OFFLINE (ws: ${client.ws.status}, error: ${loginError || 'none'}, token: ${tokenInfo})`;
     res.end(botStatus);
   } else {
     res.writeHead(405);
@@ -334,5 +336,6 @@ process.on('SIGINT', () => {
 });
 
 client.login(process.env.DISCORD_TOKEN.trim()).catch((err) => {
+  loginError = err.message;
   console.error('Lỗi kết nối Discord:', err.message);
 });
