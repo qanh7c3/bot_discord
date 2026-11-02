@@ -21,8 +21,11 @@ import Groq from 'groq-sdk';
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running');
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    const botStatus = client.isReady()
+      ? `Bot is running! Discord: ONLINE (${client.user?.tag || ''})`
+      : `Bot is running! Discord: CONNECTING (${client.ws.status})`;
+    res.end(botStatus);
   } else {
     res.writeHead(405);
     res.end();
@@ -105,6 +108,10 @@ async function sendLongReply(interaction, header, text) {
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Bot đã kết nối thành công: ${readyClient.user.tag}`);
+  readyClient.user.setPresence({
+    status: 'online',
+    activities: [{ name: '/ask', type: 0 }],
+  });
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -326,4 +333,6 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-client.login(process.env.DISCORD_TOKEN.trim());
+client.login(process.env.DISCORD_TOKEN.trim()).catch((err) => {
+  console.error('Lỗi kết nối Discord:', err.message);
+});
