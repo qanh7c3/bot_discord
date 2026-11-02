@@ -4,6 +4,9 @@
   "description": "Multi-source Query & Music Streaming Discord Bot",
   "main": "index.js",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js"

@@ -14,6 +14,8 @@ Khi tạo Web Service trên Render, bạn cần cấu hình các biến môi tr�
 | `CLIENT_ID` | **Có** | Application ID của Discord Bot (dùng để đăng ký Slash Command `/ask`). |
 | `GEMINI_API_KEY` | **Có** | API Key từ Google AI Studio để gọi Gemini AI (`gemini-3.8-flash`, `gemini-3.5-flash-lite`). |
 | `GROQ_API_KEY` | **Có** | API Key từ Groq Cloud để gọi mô hình `openai/gpt-oss-20b`. |
+| `NODE_VERSION` | **Khuyến nghị** | Đặt giá trị `22` (Render mặc định dùng Node 20, trong khi thư viện giải mã audio `@distube/ytdl-core` yêu cầu Node >= 22). |
+| `YOUTUBE_COOKIE` | *Tùy chọn* | Chuỗi Cookie tài khoản YouTube (dùng để vượt qua kiểm tra bot `Sign in to confirm you're not a bot` của YouTube trên IP trung tâm dữ liệu). |
 | `PORT` | *Tự động* | Cổng HTTP Server. Render sẽ tự động gán biến này; khi chạy cục bộ mặc định là `3000`. |
 
 > [!NOTE]
