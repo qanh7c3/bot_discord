@@ -1,9 +1,11 @@
 import http from 'http';
+import dns from 'dns';
 import 'dotenv/config';
-import { setGlobalDispatcher, Agent } from 'undici';
+
 try {
-  setGlobalDispatcher(new Agent({ maxHeaderSize: 131072 }));
+  dns.setDefaultResultOrder('ipv4first');
 } catch {}
+
 import { Client, GatewayIntentBits, Events, Options } from 'discord.js';
 import {
   joinVoiceChannel,
@@ -340,6 +342,7 @@ process.on('SIGINT', () => {
 
 client.on('debug', (msg) => {
   lastDebug = msg;
+  console.log(msg);
 });
 
 client.on('error', (err) => {
