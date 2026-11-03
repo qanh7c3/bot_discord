@@ -7,6 +7,7 @@ try {
 } catch {}
 
 const { Client, GatewayIntentBits, Events, Options } = await import('discord.js');
+const { Agent } = await import('undici');
 const { Connectors } = await import('shoukaku');
 const { Kazagumo } = await import('kazagumo');
 const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -15,6 +16,8 @@ const { default: Groq } = await import('groq-sdk');
 let loginError = null;
 let lastDebug = 'none';
 let loginResolved = false;
+let lastInteraction = 'none';
+let lastInteractionError = 'none';
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
@@ -22,8 +25,8 @@ const server = http.createServer((req, res) => {
     const tokenInfo = process.env.DISCORD_TOKEN ? `${process.env.DISCORD_TOKEN.slice(0, 6)}...${process.env.DISCORD_TOKEN.slice(-4)} (len:${process.env.DISCORD_TOKEN.length})` : 'MISSING';
     const shardStatus = client.ws.shards.first()?.status ?? 'no-shard';
     const botStatus = client.isReady()
-      ? `Bot is running! [Node ${process.version}] Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size}`
-      : `Bot is running! [Node ${process.version}] Discord: OFFLINE (ws: ${client.ws.status}, shard: ${shardStatus}, loginResolved: ${loginResolved}, error: ${loginError || 'none'}, token: ${tokenInfo}, debug: ${lastDebug})`;
+      ? `Bot is running! [Node ${process.version}] Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size} | Last: ${lastInteraction} | Err: ${lastInteractionError}`
+      : `Bot is running! [Node ${process.version}] Discord: OFFLINE (ws: ${client.ws.status}, shard: ${shardStatus}, loginResolved: ${loginResolved}, error: ${loginError || 'none'}, token: ${tokenInfo}, debug: ${lastDebug}) | Last: ${lastInteraction} | Err: ${lastInteractionError}`;
     res.end(botStatus);
   } else {
     res.writeHead(405);
@@ -47,6 +50,7 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
   rest: {
+    agent: new Agent({ connect: { family: 4 } }),
     timeout: 15000,
     retries: 3,
   },
@@ -190,10 +194,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'ask') return;
 
+  const t0 = Date.now();
   try {
     await interaction.deferReply();
+    lastInteraction = `${new Date().toLocaleTimeString('vi-VN')} - deferReply OK in ${Date.now() - t0}ms (${interaction.options.getString('source')})`;
+    console.log(lastInteraction);
   } catch (err) {
-    console.error('Lỗi deferReply:', err.message);
+    lastInteractionError = `${new Date().toLocaleTimeString('vi-VN')} - deferReply ERR in ${Date.now() - t0}ms: ${err.message}`;
+    console.error(lastInteractionError);
     return;
   }
 
