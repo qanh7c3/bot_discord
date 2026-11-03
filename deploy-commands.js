@@ -23,6 +23,53 @@ export const commands = [
         .setName('question')
         .setDescription('Câu hỏi cần giải đáp hoặc tên bài hát cần phát')
         .setRequired(true)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName('voice')
+        .setDescription('Đọc to kết quả vào kênh thoại nếu là AI/Web (Tùy chọn)')
+        .setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName('stop')
+    .setDescription('Dừng phát nhạc hoặc dừng đọc tra cứu và rời khỏi kênh thoại'),
+  new SlashCommandBuilder()
+    .setName('config')
+    .setDescription('Cấu hình bot (Chỉ dành cho chủ sở hữu bot)')
+    .addSubcommand((sub) =>
+      sub.setName('status').setDescription('Xem trạng thái cài đặt hiện tại của bot')
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('voice')
+        .setDescription('Bật hoặc tắt tự động đọc kết quả tra cứu vào kênh thoại')
+        .addBooleanOption((opt) =>
+          opt.setName('enabled').setDescription('Bật (True) hoặc Tắt (False)').setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('whitelist')
+        .setDescription('Quản lý danh sách người dùng hoặc vai trò được phép dùng bot')
+        .addStringOption((opt) =>
+          opt
+            .setName('action')
+            .setDescription('Hành động quản lý quyền')
+            .setRequired(true)
+            .addChoices(
+              { name: 'Thêm người dùng', value: 'add_user' },
+              { name: 'Xóa người dùng', value: 'remove_user' },
+              { name: 'Thêm vai trò (Role)', value: 'add_role' },
+              { name: 'Xóa vai trò (Role)', value: 'remove_role' },
+              { name: 'Cho phép tất cả (Reset)', value: 'reset' }
+            )
+        )
+        .addUserOption((opt) =>
+          opt.setName('user').setDescription('Chọn người dùng cần thêm hoặc xóa').setRequired(false)
+        )
+        .addRoleOption((opt) =>
+          opt.setName('role').setDescription('Chọn vai trò cần thêm hoặc xóa').setRequired(false)
+        )
     ),
 ];
 
@@ -37,7 +84,7 @@ export async function deployCommands(clientId, token) {
     await rest.put(Routes.applicationCommands(clientId), {
       body: commands.map((c) => c.toJSON()),
     });
-    console.log('Đã đăng ký thành công Slash Command /ask toàn cục!');
+    console.log('Đã đăng ký thành công các Slash Command toàn cục!');
   } catch (error) {
     console.error('Lỗi khi đăng ký Slash Command:', error);
   }
