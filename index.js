@@ -61,22 +61,16 @@ const client = new Client({
 
 const Nodes = [
   {
-    name: 'trinium-ssl',
-    url: 'lavalink-v4.triniumhost.com:443',
-    auth: 'free',
-    secure: true,
-  },
-  {
-    name: 'nazha-ssl',
-    url: 'lavalink.nazha.online:443',
-    auth: 'nazhafreelava',
-    secure: true,
-  },
-  {
-    name: 'millohost-ssl',
+    name: 'millohost-v4',
     url: 'lava-v4.millohost.my.id:443',
     auth: 'https://discord.gg/mjS5J2K3ep',
     secure: true,
+  },
+  {
+    name: 'trinium-2333',
+    url: 'lavalink.triniumhost.com:2333',
+    auth: 'kirito',
+    secure: false,
   },
   {
     name: 'trinium-4333',
@@ -85,9 +79,9 @@ const Nodes = [
     secure: false,
   },
   {
-    name: 'kasawa',
-    url: 'lava2.kasawa.pro:2334',
-    auth: 'kasawa',
+    name: 'heavencloud-v4',
+    url: 'budget-us7.bot.heavencloud.in:6706',
+    auth: 'youshallnotpass',
     secure: false,
   },
 ];
@@ -175,7 +169,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'ask') return;
 
-  await interaction.deferReply();
+  try {
+    await interaction.deferReply();
+  } catch (err) {
+    console.error('Lỗi deferReply:', err.message);
+    return;
+  }
 
   const source = interaction.options.getString('source');
   const question = interaction.options.getString('question');
