@@ -25,7 +25,7 @@ const server = http.createServer((req, res) => {
     const tokenInfo = process.env.DISCORD_TOKEN ? `${process.env.DISCORD_TOKEN.slice(0, 6)}...${process.env.DISCORD_TOKEN.slice(-4)} (len:${process.env.DISCORD_TOKEN.length})` : 'MISSING';
     const shardStatus = client.ws.shards.first()?.status ?? 'no-shard';
     const botStatus = client.isReady()
-      ? `Bot is running! [Node ${process.version}] Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size} | Last: ${lastInteraction} | Err: ${lastInteractionError}`
+      ? `Bot is running! [Node ${process.version}] Discord: ONLINE (${client.user?.tag || ''}) - Guilds: ${client.guilds.cache.size} | Last: ${lastInteraction} | Err: ${lastInteractionError} | Debug: ${lastDebug}`
       : `Bot is running! [Node ${process.version}] Discord: OFFLINE (ws: ${client.ws.status}, shard: ${shardStatus}, loginResolved: ${loginResolved}, error: ${loginError || 'none'}, token: ${tokenInfo}, debug: ${lastDebug}) | Last: ${lastInteraction} | Err: ${lastInteractionError}`;
     res.end(botStatus);
   } else {
@@ -201,7 +201,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     lastInteraction = `${new Date().toLocaleTimeString('vi-VN')} - deferReply OK in ${Date.now() - t0}ms (${interaction.options.getString('source')})`;
     console.log(lastInteraction);
   } catch (err) {
-    lastInteractionError = `${new Date().toLocaleTimeString('vi-VN')} - deferReply ERR in ${Date.now() - t0}ms: ${err.message}`;
+    const timeRemaining = err.timeToReset ? `${(err.timeToReset / 1000).toFixed(0)}s (${(err.timeToReset / 60000).toFixed(1)}p)` : (err.message || err.name || 'Unknown');
+    lastInteractionError = `${new Date().toLocaleTimeString('vi-VN')} - deferReply ERR in ${Date.now() - t0}ms: ${timeRemaining}`;
     console.error(lastInteractionError);
     return;
   }
