@@ -7,6 +7,14 @@ try {
   dns.setDefaultResultOrder('ipv4first');
 } catch {}
 
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 const { Client, GatewayIntentBits, Events, Options } = await import('discord.js');
 const { Agent } = await import('undici');
 const { Connectors } = await import('shoukaku');
@@ -118,12 +126,6 @@ const Nodes = [
     auth: 'https://discord.gg/mjS5J2K3ep',
     secure: true,
   },
-  {
-    name: 'nazha',
-    url: 'lavalink.nazha.online:443',
-    auth: 'nazhafreelava',
-    secure: true,
-  },
 ];
 
 const kazagumo = new Kazagumo(
@@ -197,7 +199,7 @@ async function sendLongReply(interaction, header, text) {
   }
 }
 
-function getTTSChunks(text, maxChunks = 2, maxLen = 180) {
+function cleanTextForTTS(text, maxLen = 180) {
   const clean = text
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`([^`]+)`/g, '$1')
@@ -206,30 +208,48 @@ function getTTSChunks(text, maxChunks = 2, maxLen = 180) {
     .replace(/\s+/g, ' ')
     .trim();
   const sentences = clean.match(/[^.!?]+[.!?]*/g) || [clean];
-  const chunks = [];
   let cur = '';
   for (const s of sentences) {
     const candidate = cur ? `${cur} ${s.trim()}` : s.trim();
     if (candidate.length <= maxLen) {
       cur = candidate;
     } else {
-      if (cur) chunks.push(cur);
-      cur = s.trim();
-      while (cur.length > maxLen) {
-        chunks.push(cur.slice(0, maxLen));
-        cur = cur.slice(maxLen).trim();
-      }
+      break;
     }
-    if (chunks.length >= maxChunks) break;
   }
-  if (cur && chunks.length < maxChunks) chunks.push(cur);
-  return chunks.slice(0, maxChunks);
+  return cur || clean.slice(0, maxLen);
+}
+
+async function getTTSAudioUrl(text) {
+  try {
+    const postRes = await fetch('https://api.soundoftext.com/sounds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        engine: 'Google',
+        data: { text: text.slice(0, 200), voice: 'vi-VN' }
+      })
+    });
+    const postData = await postRes.json();
+    if (!postData.id) return null;
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 350));
+      const getRes = await fetch(`https://api.soundoftext.com/sounds/${postData.id}`);
+      const getData = await getRes.json();
+      if (getData.status === 'Done') return getData.location;
+      if (getData.status === 'Error') return null;
+    }
+  } catch {}
+  return null;
 }
 
 async function playTTS(guildId, voiceChannelId, textChannelId, text) {
-  const chunks = getTTSChunks(text, 2, 180);
-  if (!chunks.length) return;
+  const cleanSnippet = cleanTextForTTS(text, 180);
+  if (!cleanSnippet) return;
   try {
+    const mp3Url = await getTTSAudioUrl(cleanSnippet);
+    if (!mp3Url) return;
+
     let player = kazagumo.players.get(guildId);
     if (!player) {
       player = await kazagumo.createPlayer({
@@ -239,18 +259,17 @@ async function playTTS(guildId, voiceChannelId, textChannelId, text) {
         deaf: true,
       });
     }
+
+    const res = await kazagumo.search(mp3Url, { nodeName: 'millohost-v4' });
+    if (!res || !res.tracks.length) return;
+
     player.queue.clear();
-    for (const chunk of chunks) {
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encodeURIComponent(chunk)}`;
-      const res = await kazagumo.search(ttsUrl);
-      if (res?.tracks?.length) {
-        player.queue.add(res.tracks[0]);
-      }
-    }
+    player.queue.add(res.tracks[0]);
+
     if (player.playing) {
-      player.skip();
+      await player.skip();
     } else if (!player.paused) {
-      player.play();
+      await player.play();
     }
   } catch (err) {
     console.error('Lỗi khi phát voice TTS:', err.message);
@@ -515,7 +534,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!player.playing && !player.paused) {
-            player.play();
+            await player.play();
           }
 
           const song = res.tracks[0];
