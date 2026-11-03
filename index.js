@@ -218,9 +218,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
-      const candidateModels = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+      const candidateModels = ['gemini-3-flash-preview', 'gemini-2.5-flash-lite'];
       let answer = '';
-      let usedModel = 'gemini-3.8-flash';
+      let usedModel = 'gemini-3-flash-preview';
       for (const m of candidateModels) {
         try {
           const model = genAI.getGenerativeModel({ model: m });
