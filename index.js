@@ -93,7 +93,6 @@ const client = new Client({
     MessageManager: 0,
     PresenceManager: 0,
     UserManager: 0,
-    GuildMemberManager: 0,
     ReactionManager: 0,
     ThreadManager: 0,
     StageInstanceManager: 0,
@@ -156,16 +155,43 @@ kazagumo.shoukaku.on('error', (name, error) => {
 });
 
 kazagumo.on('playerEmpty', (player) => {
-  player.destroy();
+  setTimeout(() => {
+    if (!player.playing && !player.queue.current && !player.queue.length) {
+      player.destroy();
+    }
+  }, 2500);
 });
 
+const emptyVoiceTimeouts = new Map();
+
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
-  const guild = oldState.guild;
-  const player = kazagumo.players.get(guild.id);
-  if (!player) return;
-  const channel = guild.channels.cache.get(player.voiceId);
-  if (channel && channel.members.filter((m) => !m.user.bot).size === 0) {
-    player.destroy();
+  const guildId = oldState.guild.id;
+  const player = kazagumo.players.get(guildId);
+  if (!player || !player.voiceId) return;
+
+  if (oldState.channelId === player.voiceId && newState.channelId !== player.voiceId) {
+    const channel = oldState.guild.channels.cache.get(player.voiceId);
+    if (!channel) return;
+    const humanCount = channel.members?.filter((m) => !m.user.bot).size ?? 0;
+    if (humanCount === 0) {
+      if (!emptyVoiceTimeouts.has(guildId)) {
+        const timer = setTimeout(() => {
+          emptyVoiceTimeouts.delete(guildId);
+          const p = kazagumo.players.get(guildId);
+          if (!p || !p.voiceId) return;
+          const ch = oldState.guild.channels.cache.get(p.voiceId);
+          if (!ch || (ch.members?.filter((m) => !m.user.bot).size ?? 0) === 0) {
+            p.destroy();
+          }
+        }, 30000);
+        emptyVoiceTimeouts.set(guildId, timer);
+      }
+    }
+  } else if (newState.channelId === player.voiceId && !newState.member?.user.bot) {
+    if (emptyVoiceTimeouts.has(guildId)) {
+      clearTimeout(emptyVoiceTimeouts.get(guildId));
+      emptyVoiceTimeouts.delete(guildId);
+    }
   }
 });
 
@@ -482,14 +508,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         let searchOptions = { requester: interaction.user };
 
         if (source === 'soundcloud') {
-          searchOptions.engine = 'soundcloud';
+          if (!question.includes('soundcloud.com')) {
+            searchOptions.engine = 'soundcloud';
+          }
         } else if (source === 'spotify') {
           if (!question.includes('spotify.com')) {
             searchOptions.engine = 'spotify';
             searchOptions.nodeName = 'millohost-v4';
           }
         } else {
-          searchOptions.engine = 'youtube';
+          if (!question.includes('youtube.com') && !question.includes('youtu.be')) {
+            searchOptions.engine = 'youtube';
+          }
         }
 
         try {
