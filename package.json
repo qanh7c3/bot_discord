@@ -17,6 +17,7 @@
     "dotenv": "^18.0.9",
     "groq-sdk": "^1.6.0",
     "kazagumo": "^3.2.2",
+    "node-edge-tts": "^1.2.12",
     "shoukaku": "^4.1.1"
   }
 }

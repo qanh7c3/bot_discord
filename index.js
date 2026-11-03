@@ -19,8 +19,8 @@ const { Client, GatewayIntentBits, Events, Options } = await import('discord.js'
 const { Agent } = await import('undici');
 const { Connectors } = await import('shoukaku');
 const { Kazagumo } = await import('kazagumo');
-const { GoogleGenerativeAI } = await import('@google/generative-ai');
 const { default: Groq } = await import('groq-sdk');
+const { askGemini, askGeminiAndSpeak } = await import('./gemini-tts.js');
 
 const CONFIG_PATH = './config.json';
 let botConfig = {
@@ -86,8 +86,7 @@ const client = new Client({
   rest: {
     agent: new Agent({ connect: { family: 4 } }),
     timeout: 15000,
-    retries: 1,
-    rejectOnRateLimit: (data) => data.timeToReset > 2500,
+    retries: 2,
   },
   makeCache: Options.cacheWithLimits({
     MessageManager: 0,
@@ -269,11 +268,14 @@ async function getTTSAudioUrl(text) {
   return null;
 }
 
-async function playTTS(guildId, voiceChannelId, textChannelId, text) {
-  const cleanSnippet = cleanTextForTTS(text, 180);
-  if (!cleanSnippet) return;
+async function playTTS(guildId, voiceChannelId, textChannelId, text, audioUrl = null) {
   try {
-    const mp3Url = await getTTSAudioUrl(cleanSnippet);
+    let mp3Url = audioUrl;
+    if (!mp3Url) {
+      const cleanSnippet = cleanTextForTTS(text, 180);
+      if (!cleanSnippet) return;
+      mp3Url = await getTTSAudioUrl(cleanSnippet);
+    }
     if (!mp3Url) return;
 
     let player = kazagumo.players.get(guildId);
@@ -431,25 +433,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await interaction.editReply('❌ Chưa cấu hình `GEMINI_API_KEY`. Vui lòng thêm biến môi trường.');
           return;
         }
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3-flash-preview'];
-        let answer = '';
-        let usedModel = 'gemini-3.5-flash-lite';
-        for (const m of candidateModels) {
-          try {
-            const model = genAI.getGenerativeModel({ model: m });
-            const result = await model.generateContent(question);
-            answer = result.response.text();
-            usedModel = m;
-            break;
-          } catch (e) {
-            if (m === candidateModels[candidateModels.length - 1]) throw e;
+
+        if (shouldVoice) {
+          const { text, audioBuffer } = await askGeminiAndSpeak(question);
+          const replyMsg = await interaction.editReply({
+            content: `🤖 **Google Gemini (Edge-TTS Hoài My)** - Câu hỏi: *${question}*\n\n${text}`,
+            files: [{ attachment: audioBuffer, name: 'gemini-voice.mp3' }],
+          });
+          if (memberVoiceChannel) {
+            const discordMp3Url = replyMsg?.attachments?.first()?.url;
+            await playTTS(interaction.guildId, memberVoiceChannel.id, interaction.channelId, text, discordMp3Url);
           }
+          return;
         }
-        await sendLongReply(interaction, `🤖 **Google Gemini (${usedModel})** - Câu hỏi: *${question}*`, answer);
-        if (shouldVoice && memberVoiceChannel) {
-          await playTTS(interaction.guildId, memberVoiceChannel.id, interaction.channelId, answer);
-        }
+
+        const answer = await askGemini(question, false);
+        await sendLongReply(interaction, `🤖 **Google Gemini** - Câu hỏi: *${question}*`, answer);
         return;
       }
 
@@ -510,6 +509,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (source === 'soundcloud') {
           if (!question.includes('soundcloud.com')) {
             searchOptions.engine = 'soundcloud';
+            searchOptions.nodeName = 'millohost-v4';
           }
         } else if (source === 'spotify') {
           if (!question.includes('spotify.com')) {
@@ -526,12 +526,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
           let res = await kazagumo.search(searchQuery, searchOptions);
 
           if ((!res || !res.tracks.length) && source === 'soundcloud') {
-            const cleanQuery = searchQuery.replace(/[()–—\-]/g, ' ').replace(/\s+/g, ' ').trim();
-            if (cleanQuery && cleanQuery !== searchQuery) {
-              res = await kazagumo.search(cleanQuery, {
-                requester: interaction.user,
-                engine: 'soundcloud',
-              });
+            const variations = [
+              searchQuery.replace(/[()–—\-_]/g, ' ').replace(/\s+/g, ' ').trim(),
+              searchQuery.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(/[()–—\-_]/g, ' ').replace(/\s+/g, ' ').trim(),
+              searchQuery.replace(/[()–—\-_]/g, ' ').replace(/\s+/g, ' ').trim().split(/\s+/).slice(0, 5).join(' ')
+            ];
+            for (const v of variations) {
+              if (v && v !== searchQuery) {
+                res = await kazagumo.search(v, {
+                  requester: interaction.user,
+                  engine: 'soundcloud',
+                  nodeName: 'millohost-v4',
+                });
+                if (res && res.tracks.length) break;
+              }
             }
           }
 
