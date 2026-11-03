@@ -7,16 +7,8 @@ try {
 } catch {}
 
 import { Client, GatewayIntentBits, Events, Options } from 'discord.js';
-import {
-  joinVoiceChannel,
-  createAudioPlayer,
-  createAudioResource,
-  demuxProbe,
-  AudioPlayerStatus,
-  VoiceConnectionStatus,
-} from '@discordjs/voice';
-import play from 'play-dl';
-import { Ytdl } from '@distube/ytdl-core';
+import { Connectors } from 'shoukaku';
+import { Kazagumo } from 'kazagumo';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Groq from 'groq-sdk';
 
@@ -49,8 +41,6 @@ if (global.gc) {
   }, 30000).unref();
 }
 
-const ytdl = new Ytdl(process.env.YOUTUBE_COOKIE ? { cookie: process.env.YOUTUBE_COOKIE.trim() } : undefined);
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -69,19 +59,79 @@ const client = new Client({
   }),
 });
 
-const guildPlayers = new Map();
+const Nodes = [
+  {
+    name: 'trinium-ssl',
+    url: 'lavalink-v4.triniumhost.com:443',
+    auth: 'free',
+    secure: true,
+  },
+  {
+    name: 'nazha-ssl',
+    url: 'lavalink.nazha.online:443',
+    auth: 'nazhafreelava',
+    secure: true,
+  },
+  {
+    name: 'millohost-ssl',
+    url: 'lava-v4.millohost.my.id:443',
+    auth: 'https://discord.gg/mjS5J2K3ep',
+    secure: true,
+  },
+  {
+    name: 'trinium-4333',
+    url: 'lavalink.triniumhost.com:4333',
+    auth: 'free',
+    secure: false,
+  },
+  {
+    name: 'kasawa',
+    url: 'lava2.kasawa.pro:2334',
+    auth: 'kasawa',
+    secure: false,
+  },
+];
 
-function getOrCreatePlayer(guildId) {
-  let player = guildPlayers.get(guildId);
-  if (!player) {
-    player = createAudioPlayer();
-    player.on('error', (error) => {
-      console.error(`Lỗi AudioPlayer tại Guild ${guildId}:`, error.message);
-    });
-    guildPlayers.set(guildId, player);
+const kazagumo = new Kazagumo(
+  {
+    defaultSearchEngine: 'youtube',
+    send: (guildId, payload) => {
+      const guild = client.guilds.cache.get(guildId);
+      if (guild) guild.shard.send(payload);
+    },
+  },
+  new Connectors.DiscordJS(client),
+  Nodes,
+  {
+    moveOnDisconnect: true,
+    resume: false,
+    reconnectTries: 5,
+    reconnectInterval: 5,
+    restTimeout: 10000,
   }
-  return player;
-}
+);
+
+kazagumo.shoukaku.on('ready', (name) => {
+  console.log(`Lavalink Node [${name}] đã sẵn sàng.`);
+});
+
+kazagumo.shoukaku.on('error', (name, error) => {
+  console.error(`Lỗi Lavalink Node [${name}]:`, error.message);
+});
+
+kazagumo.on('playerEmpty', (player) => {
+  player.destroy();
+});
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  const guild = oldState.guild;
+  const player = kazagumo.players.get(guild.id);
+  if (!player) return;
+  const channel = guild.channels.cache.get(player.voiceId);
+  if (channel && channel.members.filter((m) => !m.user.bot).size === 0) {
+    player.destroy();
+  }
+});
 
 function splitMessage(text, maxLength = 1900) {
   const chunks = [];
@@ -201,115 +251,53 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      let songTitle = '';
-      let songUrl = '';
+      let searchEngine = 'youtube';
+      let searchQuery = question;
 
-      if (source === 'youtube') {
-        const isYtUrl = play.yt_validate(question) === 'video';
-        if (isYtUrl) {
-          songUrl = question;
-          songTitle = 'YouTube Track';
-          try {
-            const info = await play.video_basic_info(question);
-            songTitle = info.video_details.title || songTitle;
-          } catch {}
-        } else {
-          const results = await play.search(question, { source: { youtube: 'video' }, limit: 1 });
-          if (!results || results.length === 0 || !results[0].url) {
-            await interaction.editReply(`❌ Không tìm thấy bài hát nào trên YouTube cho: *${question}*`);
-            return;
-          }
-          songTitle = results[0].title || 'YouTube Track';
-          songUrl = results[0].url;
-        }
+      if (source === 'soundcloud') {
+        searchEngine = 'soundcloud';
       } else if (source === 'spotify') {
-        let query = question;
-        if (question.includes('open.spotify.com')) {
-          try {
-            const res = await fetch(question);
-            const html = await res.text();
-            const match = html.match(/property="og:title" content="([^"]+)"/);
-            if (match && match[1]) query = match[1];
-          } catch {}
-        }
-        const results = await play.search(query, { source: { youtube: 'video' }, limit: 1 });
-        if (!results || results.length === 0 || !results[0].url) {
-          await interaction.editReply(`❌ Không tìm thấy bài hát nào trên Spotify/YouTube cho: *${question}*`);
-          return;
-        }
-        songTitle = results[0].title || query;
-        songUrl = results[0].url;
-      } else if (source === 'soundcloud') {
-        if (question.startsWith('https://') && question.includes('soundcloud.com')) {
-          songUrl = question;
-          songTitle = 'SoundCloud Track';
-          try {
-            const info = await play.soundcloud(question);
-            songTitle = info.name || songTitle;
-          } catch {}
-        } else {
-          const results = await play.search(question, { source: { youtube: 'video' }, limit: 1 });
-          if (!results || results.length === 0 || !results[0].url) {
-            await interaction.editReply(`❌ Không tìm thấy bài hát nào trên SoundCloud/YouTube cho: *${question}*`);
-            return;
-          }
-          songTitle = results[0].title || question;
-          songUrl = results[0].url;
-        }
+        searchEngine = question.includes('open.spotify.com') ? undefined : 'youtube';
       }
-
-      if (!songUrl) {
-        await interaction.editReply(`❌ Không tìm thấy URL hợp lệ cho bài hát: *${question}*`);
-        return;
-      }
-
-      const player = getOrCreatePlayer(interaction.guildId);
-      const connection = joinVoiceChannel({
-        channelId: memberVoiceChannel.id,
-        guildId: interaction.guildId,
-        adapterCreator: interaction.guild.voiceAdapterCreator,
-      });
-
-      connection.subscribe(player);
 
       try {
-        let resource;
-        if (songUrl.includes('soundcloud.com')) {
-          try {
-            const scStream = await play.stream(songUrl);
-            resource = createAudioResource(scStream.stream, { inputType: scStream.type });
-          } catch {
-            const ytResults = await play.search(songTitle, { source: { youtube: 'video' }, limit: 1 });
-            if (ytResults && ytResults[0]?.url) {
-              const stream = ytdl.download(ytResults[0].url, {
-                filter: (f) => f.container === 'webm' && f.hasAudio && !f.hasVideo,
-                highWaterMark: 1 << 20,
-              });
-              const probe = await demuxProbe(stream);
-              resource = createAudioResource(probe.stream, { inputType: probe.type });
-            } else {
-              throw new Error('SoundCloud stream failed and no YouTube fallback found');
-            }
-          }
-        } else {
-          const stream = ytdl.download(songUrl, {
-            filter: (f) => f.container === 'webm' && f.hasAudio && !f.hasVideo,
-            highWaterMark: 1 << 20,
-          });
-          const probe = await demuxProbe(stream);
-          resource = createAudioResource(probe.stream, { inputType: probe.type });
+        const res = await kazagumo.search(searchQuery, {
+          requester: interaction.user,
+          ...(searchEngine ? { engine: searchEngine } : {}),
+        });
+
+        if (!res || !res.tracks.length) {
+          await interaction.editReply(`❌ Không tìm thấy bài hát nào cho: *${question}*`);
+          return;
         }
 
-        player.play(resource);
+        let player = kazagumo.players.get(interaction.guildId);
+        if (!player) {
+          player = await kazagumo.createPlayer({
+            guildId: interaction.guildId,
+            textId: interaction.channelId,
+            voiceId: memberVoiceChannel.id,
+            deaf: true,
+          });
+        }
 
+        if (res.type === 'PLAYLIST') {
+          for (const track of res.tracks) player.queue.add(track);
+        } else {
+          player.queue.add(res.tracks[0]);
+        }
+
+        if (!player.playing && !player.paused) {
+          player.play();
+        }
+
+        const song = res.tracks[0];
         await interaction.editReply(
-          `▶️ **Đang phát:** [${songTitle}](${songUrl})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`
+          `▶️ **Đang phát:** [${song.title}](${song.uri})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`
         );
       } catch (streamErr) {
-        console.error('Lỗi khi phát stream audio:', streamErr);
-        await interaction.editReply(
-          `⚠️ Không thể phát nguồn âm thanh này: ${streamErr.message}\n💡 *Có thể do nền tảng (${source.toUpperCase()}) hạn chế bản quyền hoặc yêu cầu xác thực.*`
-        );
+        console.error('Lỗi khi phát nhạc Lavalink:', streamErr);
+        await interaction.editReply(`⚠️ Không thể phát nguồn âm thanh này: ${streamErr.message}`);
       }
       return;
     }
