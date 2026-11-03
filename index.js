@@ -6,11 +6,11 @@ try {
   dns.setDefaultResultOrder('ipv4first');
 } catch {}
 
-import { Client, GatewayIntentBits, Events, Options } from 'discord.js';
-import { Connectors } from 'shoukaku';
-import { Kazagumo } from 'kazagumo';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import Groq from 'groq-sdk';
+const { Client, GatewayIntentBits, Events, Options } = await import('discord.js');
+const { Connectors } = await import('shoukaku');
+const { Kazagumo } = await import('kazagumo');
+const { GoogleGenerativeAI } = await import('@google/generative-ai');
+const { default: Groq } = await import('groq-sdk');
 
 let loginError = null;
 let lastDebug = 'none';
@@ -46,6 +46,10 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
   ],
+  rest: {
+    timeout: 15000,
+    retries: 3,
+  },
   makeCache: Options.cacheWithLimits({
     MessageManager: 0,
     PresenceManager: 0,
@@ -337,11 +341,36 @@ client.on('error', (err) => {
   console.error('Client error:', err.message);
 });
 
-client.login(process.env.DISCORD_TOKEN.trim())
-  .then(() => {
+client.rest.on('restDebug', (msg) => {
+  lastDebug = `[REST] ${msg}`;
+  console.log('[REST]', msg);
+});
+
+client.rest.on('rateLimited', (info) => {
+  lastDebug = `[REST 429] retryAfter: ${info.retryAfter}ms`;
+  console.warn('[REST 429]', info);
+});
+
+async function connectDiscord() {
+  if (client.isReady()) return;
+  try {
+    await client.login(process.env.DISCORD_TOKEN.trim());
     loginResolved = true;
-  })
-  .catch((err) => {
+  } catch (err) {
     loginError = err.message;
     console.error('Lỗi kết nối Discord:', err.message);
-  });
+    setTimeout(connectDiscord, 10000);
+  }
+}
+
+connectDiscord();
+
+setInterval(() => {
+  if (!client.isReady()) {
+    console.warn('Bot chưa kết nối gateway Discord, thử lại...');
+    try {
+      client.destroy();
+    } catch {}
+    connectDiscord();
+  }
+}, 30000).unref();

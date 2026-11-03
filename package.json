@@ -8,8 +8,8 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "start": "node --dns-result-order=ipv4first index.js",
+    "deploy": "node --dns-result-order=ipv4first deploy-commands.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
