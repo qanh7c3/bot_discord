@@ -15,7 +15,7 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-const { Client, GatewayIntentBits, Events, Options } = await import('discord.js');
+const { Client, GatewayIntentBits, Events, Options, ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import('discord.js');
 const { Agent } = await import('undici');
 const { Connectors } = await import('shoukaku');
 const { Kazagumo } = await import('kazagumo');
@@ -161,6 +161,27 @@ kazagumo.on('playerEmpty', (player) => {
   }, 2500);
 });
 
+kazagumo.on('playerStart', (player, track) => {
+  if (player.suppressFirst) {
+    player.suppressFirst = false;
+    return;
+  }
+  const channel = client.channels.cache.get(player.textId);
+  if (channel) {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('clear_queue')
+        .setLabel('Xóa hàng đợi')
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji('🗑️')
+    );
+    channel.send({
+      content: `▶️ **Đang phát tiếp theo:** [${track.title}](${track.uri})\n📋 Còn lại: **${player.queue.length} bài** trong hàng đợi`,
+      components: [row],
+    }).catch(() => {});
+  }
+});
+
 const emptyVoiceTimeouts = new Map();
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
@@ -293,6 +314,7 @@ async function playTTS(guildId, voiceChannelId, textChannelId, text, audioUrl = 
 
     player.queue.clear();
     player.queue.add(res.tracks[0]);
+    player.suppressFirst = true;
 
     if (player.playing) {
       await player.skip();
@@ -321,6 +343,27 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton()) {
+    if (interaction.customId === 'clear_queue') {
+      if (botConfig.allowedUsers.length > 0 && !isOwner(interaction.user)) {
+        if (!botConfig.allowedUsers.includes(interaction.user.id)) {
+          await interaction.reply({ content: '❌ Bạn không có quyền sử dụng bot này.', ephemeral: true });
+          return;
+        }
+      }
+      const player = kazagumo.players.get(interaction.guildId);
+      if (!player || player.queue.length === 0) {
+        await interaction.reply({ content: 'ℹ️ Hàng đợi hiện đang trống.', ephemeral: true });
+        return;
+      }
+      const count = player.queue.length;
+      player.queue.clear();
+      await interaction.reply(`🗑️ <@${interaction.user.id}> đã xóa sạch **${count} bài** trong hàng đợi. (Bài đang phát vẫn tiếp tục)`);
+      return;
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
   if (!['ask', 'stop', 'config'].includes(commandName)) return;
@@ -406,7 +449,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
     player.destroy();
-    await interaction.editReply('⏹️ Đã dừng phát và rời khỏi kênh thoại.');
+    await interaction.editReply('⏹️ Đã dừng phát, xóa sạch hàng đợi và rời khỏi kênh thoại.');
     return;
   }
 
@@ -565,20 +608,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
             });
           }
 
+          if (player.queue.length >= 20) {
+            await interaction.editReply('⚠️ Hàng đợi đã đầy (tối đa 20 bài). Vui lòng chờ phát bớt hoặc nhấn nút xóa hàng đợi.');
+            return;
+          }
+
+          const clearRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('clear_queue')
+              .setLabel('Xóa hàng đợi')
+              .setStyle(ButtonStyle.Danger)
+              .setEmoji('🗑️')
+          );
+
+          const wasPlaying = player.playing;
+
           if (res.type === 'PLAYLIST') {
-            for (const track of res.tracks) player.queue.add(track);
+            const availableSlots = 20 - player.queue.length;
+            const tracksToAdd = res.tracks.slice(0, availableSlots);
+            for (const track of tracksToAdd) player.queue.add(track);
           } else {
             player.queue.add(res.tracks[0]);
           }
 
           if (!player.playing && !player.paused) {
+            player.suppressFirst = true;
             await player.play();
           }
 
           const song = res.tracks[0];
-          await interaction.editReply(
-            `▶️ **Đang phát:** [${song.title}](${song.uri})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`
-          );
+          if (wasPlaying) {
+            await interaction.editReply({
+              content: `📋 **Đã thêm vào hàng đợi (Vị trí #${player.queue.length}):** [${song.title}](${song.uri})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`,
+              components: [clearRow],
+            });
+          } else {
+            await interaction.editReply({
+              content: `▶️ **Đang phát:** [${song.title}](${song.uri})\n🔊 Kênh thoại: **${memberVoiceChannel.name}**\n📡 Nguồn: **${source.toUpperCase()}**`,
+              components: [clearRow],
+            });
+          }
         } catch (streamErr) {
           console.error('Lỗi khi phát nhạc Lavalink:', streamErr);
           await interaction.editReply(`⚠️ Không thể phát nguồn âm thanh này: ${streamErr.message}`);
