@@ -63,6 +63,23 @@ const client = new Client({
   }),
 });
 
+const originalRestGet = client.rest.get.bind(client.rest);
+client.rest.get = async (route, options) => {
+  if (typeof route === 'string' && route.includes('/gateway/bot')) {
+    return {
+      url: 'wss://gateway.discord.gg',
+      shards: 1,
+      session_start_limit: {
+        total: 1000,
+        remaining: 999,
+        reset_after: 86400000,
+        max_concurrency: 1,
+      },
+    };
+  }
+  return originalRestGet(route, options);
+};
+
 const Nodes = [
   {
     name: 'millohost-v4',
@@ -351,26 +368,11 @@ client.rest.on('rateLimited', (info) => {
   console.warn('[REST 429]', info);
 });
 
-async function connectDiscord() {
-  if (client.isReady()) return;
-  try {
-    await client.login(process.env.DISCORD_TOKEN.trim());
+client.login(process.env.DISCORD_TOKEN.trim())
+  .then(() => {
     loginResolved = true;
-  } catch (err) {
+  })
+  .catch((err) => {
     loginError = err.message;
     console.error('Lỗi kết nối Discord:', err.message);
-    setTimeout(connectDiscord, 10000);
-  }
-}
-
-connectDiscord();
-
-setInterval(() => {
-  if (!client.isReady()) {
-    console.warn('Bot chưa kết nối gateway Discord, thử lại...');
-    try {
-      client.destroy();
-    } catch {}
-    connectDiscord();
-  }
-}, 30000).unref();
+  });
