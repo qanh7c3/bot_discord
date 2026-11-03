@@ -18,13 +18,16 @@ const CONFIG_PATH = './config.json';
 let botConfig = {
   readVoice: false,
   allowedUsers: [],
-  allowedRoles: [],
 };
 
 try {
   if (fs.existsSync(CONFIG_PATH)) {
     const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
-    botConfig = { ...botConfig, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    botConfig = {
+      readVoice: !!parsed.readVoice,
+      allowedUsers: Array.isArray(parsed.allowedUsers) ? parsed.allowedUsers : [],
+    };
   } else {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
   }
@@ -116,22 +119,10 @@ const Nodes = [
     secure: true,
   },
   {
-    name: 'trinium-2333',
-    url: 'lavalink.triniumhost.com:2333',
-    auth: 'kirito',
-    secure: false,
-  },
-  {
-    name: 'trinium-4333',
-    url: 'lavalink.triniumhost.com:4333',
-    auth: 'free',
-    secure: false,
-  },
-  {
-    name: 'heavencloud-v4',
-    url: 'budget-us7.bot.heavencloud.in:6706',
-    auth: 'youshallnotpass',
-    secure: false,
+    name: 'nazha',
+    url: 'lavalink.nazha.online:443',
+    auth: 'nazhafreelava',
+    secure: true,
   },
 ];
 
@@ -309,9 +300,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (sub === 'status') {
       const voiceStatus = botConfig.readVoice ? '🟢 BẬT' : '🔴 TẮT';
       const usersList = botConfig.allowedUsers.length ? botConfig.allowedUsers.map((id) => `<@${id}>`).join(', ') : 'Tất cả mọi người';
-      const rolesList = botConfig.allowedRoles.length ? botConfig.allowedRoles.map((id) => `<@&${id}>`).join(', ') : 'Tất cả vai trò';
       await interaction.editReply(
-        `⚙️ **Cài đặt hệ thống Bot:**\n\n🔊 **Đọc Voice khi tra cứu:** ${voiceStatus}\n👥 **Người dùng được phép dùng bot:** ${usersList}\n🛡️ **Vai trò được phép dùng bot:** ${rolesList}`
+        `⚙️ **Cài đặt hệ thống Bot:**\n\n🔊 **Đọc Voice khi tra cứu:** ${voiceStatus}\n👥 **Người dùng được phép dùng bot:** ${usersList}`
       );
       return;
     }
@@ -327,9 +317,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (sub === 'whitelist') {
       const action = interaction.options.getString('action');
       const targetUser = interaction.options.getUser('user');
-      const targetRole = interaction.options.getRole('role');
 
-      if (action === 'add_user') {
+      if (action === 'add' || action === 'add_user') {
         if (!targetUser) {
           await interaction.editReply('⚠️ Vui lòng chọn người dùng cần thêm vào danh sách.');
           return;
@@ -342,7 +331,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (action === 'remove_user') {
+      if (action === 'remove' || action === 'remove_user') {
         if (!targetUser) {
           await interaction.editReply('⚠️ Vui lòng chọn người dùng cần xóa khỏi danh sách.');
           return;
@@ -353,33 +342,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (action === 'add_role') {
-        if (!targetRole) {
-          await interaction.editReply('⚠️ Vui lòng chọn vai trò cần thêm vào danh sách.');
-          return;
-        }
-        if (!botConfig.allowedRoles.includes(targetRole.id)) {
-          botConfig.allowedRoles.push(targetRole.id);
-          saveConfig();
-        }
-        await interaction.editReply(`✅ Đã thêm vai trò <@&${targetRole.id}> vào danh sách được phép dùng bot.`);
-        return;
-      }
-
-      if (action === 'remove_role') {
-        if (!targetRole) {
-          await interaction.editReply('⚠️ Vui lòng chọn vai trò cần xóa khỏi danh sách.');
-          return;
-        }
-        botConfig.allowedRoles = botConfig.allowedRoles.filter((id) => id !== targetRole.id);
-        saveConfig();
-        await interaction.editReply(`✅ Đã xóa vai trò <@&${targetRole.id}> khỏi danh sách.`);
-        return;
-      }
-
       if (action === 'reset') {
         botConfig.allowedUsers = [];
-        botConfig.allowedRoles = [];
         saveConfig();
         await interaction.editReply('✅ Đã đặt lại quyền: Cho phép tất cả mọi người sử dụng bot.');
         return;
@@ -400,11 +364,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (commandName === 'ask') {
-    const hasRestrictions = botConfig.allowedUsers.length > 0 || botConfig.allowedRoles.length > 0;
+    const hasRestrictions = botConfig.allowedUsers.length > 0;
     if (hasRestrictions && !isOwner(interaction.user)) {
       const userAllowed = botConfig.allowedUsers.includes(interaction.user.id);
-      const roleAllowed = interaction.member?.roles?.cache?.some((r) => botConfig.allowedRoles.includes(r.id));
-      if (!userAllowed && !roleAllowed) {
+      if (!userAllowed) {
         await interaction.editReply('❌ Bạn không có quyền sử dụng bot này. Vui lòng liên hệ chủ bot.');
         return;
       }
@@ -424,9 +387,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
         const genAI = new GoogleGenerativeAI(apiKey);
-        const candidateModels = ['gemini-3-flash-preview', 'gemini-2.5-flash-lite'];
+        const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3-flash-preview'];
         let answer = '';
-        let usedModel = 'gemini-3-flash-preview';
+        let usedModel = 'gemini-3.5-flash-lite';
         for (const m of candidateModels) {
           try {
             const model = genAI.getGenerativeModel({ model: m });
@@ -496,22 +459,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
 
-        let searchEngine = 'youtube';
         let searchQuery = question;
+        let searchOptions = { requester: interaction.user };
 
         if (source === 'soundcloud') {
-          searchEngine = 'soundcloud';
+          searchOptions.engine = 'soundcloud';
         } else if (source === 'spotify') {
-          searchEngine = question.includes('open.spotify.com') ? undefined : 'youtube';
+          if (!question.includes('spotify.com')) {
+            searchOptions.engine = 'spotify';
+            searchOptions.nodeName = 'millohost-v4';
+          }
+        } else {
+          searchOptions.engine = 'youtube';
         }
 
         try {
-          let res = await kazagumo.search(searchQuery, {
-            requester: interaction.user,
-            ...(searchEngine ? { engine: searchEngine } : {}),
-          });
+          let res = await kazagumo.search(searchQuery, searchOptions);
 
           if ((!res || !res.tracks.length) && source === 'soundcloud') {
+            const cleanQuery = searchQuery.replace(/[()–—\-]/g, ' ').replace(/\s+/g, ' ').trim();
+            if (cleanQuery && cleanQuery !== searchQuery) {
+              res = await kazagumo.search(cleanQuery, {
+                requester: interaction.user,
+                engine: 'soundcloud',
+              });
+            }
+          }
+
+          if ((!res || !res.tracks.length) && source === 'spotify' && !question.includes('spotify.com')) {
             res = await kazagumo.search(searchQuery, {
               requester: interaction.user,
               engine: 'youtube',
@@ -519,17 +494,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           if (!res || !res.tracks.length) {
-            const cleanQuery = searchQuery.replace(/[()–—\-]/g, ' ').replace(/\s+/g, ' ').trim();
-            if (cleanQuery && cleanQuery !== searchQuery) {
-              res = await kazagumo.search(cleanQuery, {
-                requester: interaction.user,
-                engine: 'youtube',
-              });
-            }
-          }
-
-          if (!res || !res.tracks.length) {
-            await interaction.editReply(`❌ Không tìm thấy bài hát nào cho: *${question}*`);
+            await interaction.editReply(`❌ Không tìm thấy bài hát nào trên ${source.toUpperCase()} cho: *${question}*`);
             return;
           }
 

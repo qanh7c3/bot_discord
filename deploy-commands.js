@@ -50,25 +50,20 @@ export const commands = [
     .addSubcommand((sub) =>
       sub
         .setName('whitelist')
-        .setDescription('Quản lý danh sách người dùng hoặc vai trò được phép dùng bot')
+        .setDescription('Quản lý người dùng được phép sử dụng bot')
         .addStringOption((opt) =>
           opt
             .setName('action')
             .setDescription('Hành động quản lý quyền')
             .setRequired(true)
             .addChoices(
-              { name: 'Thêm người dùng', value: 'add_user' },
-              { name: 'Xóa người dùng', value: 'remove_user' },
-              { name: 'Thêm vai trò (Role)', value: 'add_role' },
-              { name: 'Xóa vai trò (Role)', value: 'remove_role' },
+              { name: 'Thêm người dùng', value: 'add' },
+              { name: 'Xóa người dùng', value: 'remove' },
               { name: 'Cho phép tất cả (Reset)', value: 'reset' }
             )
         )
         .addUserOption((opt) =>
-          opt.setName('user').setDescription('Chọn người dùng cần thêm hoặc xóa').setRequired(false)
-        )
-        .addRoleOption((opt) =>
-          opt.setName('role').setDescription('Chọn vai trò cần thêm hoặc xóa').setRequired(false)
+          opt.setName('user').setDescription('Chọn @tên người dùng').setRequired(false)
         )
     ),
 ];

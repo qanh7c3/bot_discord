@@ -1,5 +1,4 @@
 {
   "readVoice": false,
-  "allowedUsers": [],
-  "allowedRoles": []
+  "allowedUsers": []
 }
