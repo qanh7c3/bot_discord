@@ -52,7 +52,8 @@ const client = new Client({
   rest: {
     agent: new Agent({ connect: { family: 4 } }),
     timeout: 15000,
-    retries: 3,
+    retries: 1,
+    rejectOnRateLimit: (data) => data.timeToReset > 2500,
   },
   makeCache: Options.cacheWithLimits({
     MessageManager: 0,
